@@ -1,0 +1,16 @@
+venv/
+.github
+
+__pycache__/
+
+app/__pycache__
+app/detection/__pycache__
+env
+venv_disriego_iot
+uploads
+.pytest_cache/
+.python-version
+
+/.env
+.env
+
