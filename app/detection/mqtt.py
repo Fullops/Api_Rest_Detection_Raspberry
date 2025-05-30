@@ -9,7 +9,7 @@ import json
 
 router = APIRouter()
 
-broker = "v29821bc.ala.us-east-1.emqxsl.com"
+broker = "d755c7bc.ala.us-east-1.emqxsl.com"
 port = 8883
 username = "user_test"
 password = "1234"
