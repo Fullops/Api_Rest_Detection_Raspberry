@@ -6,6 +6,8 @@ from io import BytesIO
 import base64
 import os
 from datetime import datetime
+from pyzbar.pyzbar import decode
+from PIL import Image
 
 net = cv2.dnn.readNetFromCaffe(
     "mobilenet_ssd/deploy.prototxt",
@@ -16,6 +18,73 @@ CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
            "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
            "dog", "horse", "motorbike", "person", "pottedplant",
            "sheep", "sofa", "train", "tvmonitor"]
+
+def read_code_from_image(image_bytes: bytes) -> list:
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        results = decode(img)
+
+        if not results:
+            return "No se detectó ningún código"
+
+        codes = []
+        for code in results:
+            bbox = code.rect  # Bounding box con x, y, width, height
+
+            codes.append({
+                "type": code.type,
+                "data": code.data.decode("utf-8"),
+                "bounding_box": {
+                    "x": bbox.left,
+                    "y": bbox.top,
+                    "width": bbox.width,
+                    "height": bbox.height
+                }
+            })
+
+        return codes
+
+    except Exception as e:
+        return f"Error al procesar la imagen: {str(e)}"
+
+def read_code_from_base64(image_base64: str) -> list:
+    try:
+        # Eliminar encabezado si lo tiene (data:image...)
+        if image_base64.startswith("data:image"):
+            image_base64 = image_base64.split(",")[1]
+
+        # Decodificar base64 y cargar imagen
+        image_data = base64.b64decode(image_base64)
+        image_array = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise ValueError("No se pudo decodificar la imagen")
+
+        # Usar pyzbar para decodificar códigos
+        decoded_objects = decode(image)
+        if not decoded_objects:
+            return []
+
+        result = []
+        for obj in decoded_objects:
+            (x, y, w, h) = obj.rect
+            result.append({
+                "data": obj.data.decode("utf-8"),
+                "type": obj.type,
+                "bounding_box": {
+                    "x1": int(x),
+                    "y1": int(y),
+                    "x2": int(x + w),
+                    "y2": int(y + h)
+                }
+            })
+
+        return result
+
+    except Exception as e:
+        raise RuntimeError(f"Error al procesar imagen base64: {str(e)}")
+
     
 def detect_persons_haar_from_base64(image_base64: str) -> list:
     try:
