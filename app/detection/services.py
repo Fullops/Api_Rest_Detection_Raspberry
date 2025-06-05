@@ -47,6 +47,49 @@ def read_code_from_image(image_bytes: bytes) -> list:
     except Exception as e:
         return f"Error al procesar la imagen: {str(e)}"
 
+import cv2
+import numpy as np
+import base64
+import os
+from pyzbar.pyzbar import decode
+
+def detect_code_boxes_from_base64(image_base64: str, save_path: str = "deteccion_resultado.jpg") -> list:
+    if image_base64.startswith("data:image"):
+        image_base64 = image_base64.split(",")[1]
+
+    image_data = base64.b64decode(image_base64)
+    image_array = np.frombuffer(image_data, np.uint8)
+    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+    if image is None:
+        raise ValueError("No se pudo decodificar la imagen")
+
+    results = decode(image)
+    boxes = []
+
+    for obj in results:
+        (x, y, w, h) = obj.rect
+        tipo = obj.type
+
+        boxes.append({
+            "type": tipo,
+            "bounding_box": {
+                "x1": int(x),
+                "y1": int(y),
+                "x2": int(x + w),
+                "y2": int(y + h)
+            }
+        })
+
+        # Dibujar rectángulo y texto
+        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(image, tipo, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+
+    # Guardar imagen con bounding boxes
+    if boxes:
+        cv2.imwrite(save_path, image)
+
+    return boxes
 
 def preprocess_image_for_qr(image: np.ndarray) -> np.ndarray:
     # Convertir a escala de grises

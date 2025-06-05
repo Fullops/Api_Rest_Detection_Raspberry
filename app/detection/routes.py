@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from fastapi.responses import JSONResponse
 from app.detection.schemas import ImageBase64Payload
 from app.detection.services import read_code_from_image
+from app.detection.services import detect_code_boxes_from_base64
 from app.detection.services import read_code_from_base64
 from app.detection.services import detect_persons_haar_from_base64
 from app.detection.services import detect_faces_haar_from_base64
@@ -37,6 +38,42 @@ async def read_code(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al procesar la imagen: {str(e)}"
+        )
+
+@router.post("/detect-code-boxes/")
+async def detect_code_boxes(payload: ImageBase64Payload):
+    try:
+        if not hasattr(payload, "image_base64") or not payload.image_base64:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Falta el campo 'image_base64' o está vacío en el cuerpo de la solicitud."
+            )
+
+        result = detect_code_boxes_from_base64(payload.image_base64)
+
+        if not result:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "status": status.HTTP_204_NO_CONTENT,
+                    "message": "No se detectó ningún código.",
+                    "result": None
+                }
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": status.HTTP_200_OK,
+                "message": "Códigos detectados.",
+                "result": result
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al detectar códigos: {str(e)}"
         )
 
 @router.post("/read-code-base64/")
