@@ -19,6 +19,19 @@ CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
            "dog", "horse", "motorbike", "person", "pottedplant",
            "sheep", "sofa", "train", "tvmonitor"]
 
+tipo_mapeo = {
+            "QRCODE": "QR",
+            "QR_CODE": "QR",
+            "EAN13": "Barcode",
+            "EAN8": "Barcode",
+            "CODE128": "Barcode",
+            "CODE39": "Barcode",
+            "UPCA": "Barcode",
+            "UPCE": "Barcode",
+            "ITF": "Barcode",
+            "PDF417": "Barcode"
+        }
+
 def read_code_from_image(image_bytes: bytes) -> list:
     try:
         img = Image.open(BytesIO(image_bytes))
@@ -47,13 +60,7 @@ def read_code_from_image(image_bytes: bytes) -> list:
     except Exception as e:
         return f"Error al procesar la imagen: {str(e)}"
 
-import cv2
-import numpy as np
-import base64
-import os
-from pyzbar.pyzbar import decode
-
-def detect_code_boxes_from_base64(image_base64: str, save_path: str = "deteccion_resultado.jpg") -> list:
+def detect_code_boxes_from_base64(image_base64: str) -> list:
     if image_base64.startswith("data:image"):
         image_base64 = image_base64.split(",")[1]
 
@@ -69,10 +76,11 @@ def detect_code_boxes_from_base64(image_base64: str, save_path: str = "deteccion
 
     for obj in results:
         (x, y, w, h) = obj.rect
-        tipo = obj.type
+        tipo_original = obj.type
+        tipo_legible = tipo_mapeo.get(tipo_original, "Desconocido")
 
         boxes.append({
-            "type": tipo,
+            "type": tipo_legible,
             "bounding_box": {
                 "x1": int(x),
                 "y1": int(y),
@@ -81,24 +89,11 @@ def detect_code_boxes_from_base64(image_base64: str, save_path: str = "deteccion
             }
         })
 
-        # Dibujar rectángulo y texto
-        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(image, tipo, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-
-    # Guardar imagen con bounding boxes
-    if boxes:
-        cv2.imwrite(save_path, image)
-
     return boxes
 
 def preprocess_image_for_qr(image: np.ndarray) -> np.ndarray:
-    # Convertir a escala de grises
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # Mejorar el contraste
     gray = cv2.equalizeHist(gray)
-
-    # Aplicar umbral adaptativo para binarización
     thresh = cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -134,7 +129,7 @@ def read_qr_with_opencv(image: np.ndarray) -> list:
         for info, pts in zip(decoded_info, points):
             if info:
                 result.append({
-                    "type": "QR_CODE",
+                    "type": "QR",
                     "data": info,
                     "bounding_box": {
                         "x1": int(pts[0][0]),
@@ -157,14 +152,15 @@ def read_code_from_base64(image_base64: str) -> list:
         if image is None:
             raise ValueError("No se pudo decodificar la imagen")
 
-        # Intentar con pyzbar (sin preprocesamiento)
-        results = try_multiple_rotations(image)
         output = []
 
+        # Intentar con pyzbar (sin preprocesamiento)
+        results = try_multiple_rotations(image)
         for obj in results:
+            tipo_legible = tipo_mapeo.get(obj.type, "Desconocido")
             (x, y, w, h) = obj.rect
             output.append({
-                "type": obj.type,
+                "type": tipo_legible,
                 "data": obj.data.decode("utf-8"),
                 "bounding_box": {
                     "x1": int(x),
@@ -183,9 +179,10 @@ def read_code_from_base64(image_base64: str) -> list:
             processed = preprocess_image_for_qr(image)
             results = try_multiple_rotations(processed)
             for obj in results:
+                tipo_legible = tipo_mapeo.get(obj.type, "Desconocido")
                 (x, y, w, h) = obj.rect
                 output.append({
-                    "type": obj.type,
+                    "type": tipo_legible,
                     "data": obj.data.decode("utf-8"),
                     "bounding_box": {
                         "x1": int(x),
@@ -199,7 +196,6 @@ def read_code_from_base64(image_base64: str) -> list:
 
     except Exception as e:
         raise RuntimeError(f"Error al procesar imagen base64: {str(e)}")
-
     
 def detect_persons_haar_from_base64(image_base64: str) -> list:
     try:
