@@ -47,13 +47,66 @@ def read_code_from_image(image_bytes: bytes) -> list:
     except Exception as e:
         return f"Error al procesar la imagen: {str(e)}"
 
+
+def preprocess_image_for_qr(image: np.ndarray) -> np.ndarray:
+    # Convertir a escala de grises
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Mejorar el contraste
+    gray = cv2.equalizeHist(gray)
+
+    # Aplicar umbral adaptativo para binarización
+    thresh = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        11, 2
+    )
+    return thresh
+
+def try_multiple_rotations(image: np.ndarray) -> list:
+    results = decode(image)
+    if results:
+        return results
+
+    rotation_flags = {
+        90: cv2.ROTATE_90_CLOCKWISE,
+        180: cv2.ROTATE_180,
+        270: cv2.ROTATE_90_COUNTERCLOCKWISE
+    }
+
+    for angle in [90, 180, 270]:
+        rotated = cv2.rotate(image, rotation_flags[angle])
+        results = decode(rotated)
+        if results:
+            return results
+        
+    return []
+
+def read_qr_with_opencv(image: np.ndarray) -> list:
+    detector = cv2.QRCodeDetector()
+    retval, decoded_info, points, _ = detector.detectAndDecodeMulti(image)
+    result = []
+    if retval:
+        for info, pts in zip(decoded_info, points):
+            if info:
+                result.append({
+                    "type": "QR_CODE",
+                    "data": info,
+                    "bounding_box": {
+                        "x1": int(pts[0][0]),
+                        "y1": int(pts[0][1]),
+                        "x2": int(pts[2][0]),
+                        "y2": int(pts[2][1])
+                    }
+                })
+    return result
+
 def read_code_from_base64(image_base64: str) -> list:
     try:
-        # Eliminar encabezado si lo tiene (data:image...)
         if image_base64.startswith("data:image"):
             image_base64 = image_base64.split(",")[1]
 
-        # Decodificar base64 y cargar imagen
         image_data = base64.b64decode(image_base64)
         image_array = np.frombuffer(image_data, np.uint8)
         image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
@@ -61,17 +114,15 @@ def read_code_from_base64(image_base64: str) -> list:
         if image is None:
             raise ValueError("No se pudo decodificar la imagen")
 
-        # Usar pyzbar para decodificar códigos
-        decoded_objects = decode(image)
-        if not decoded_objects:
-            return []
+        # Intentar con pyzbar (sin preprocesamiento)
+        results = try_multiple_rotations(image)
+        output = []
 
-        result = []
-        for obj in decoded_objects:
+        for obj in results:
             (x, y, w, h) = obj.rect
-            result.append({
-                "data": obj.data.decode("utf-8"),
+            output.append({
                 "type": obj.type,
+                "data": obj.data.decode("utf-8"),
                 "bounding_box": {
                     "x1": int(x),
                     "y1": int(y),
@@ -80,7 +131,28 @@ def read_code_from_base64(image_base64: str) -> list:
                 }
             })
 
-        return result
+        # Si no detectó con pyzbar, intentar con OpenCV QR detector
+        if not output:
+            output = read_qr_with_opencv(image)
+
+        # Como último recurso, usar imagen preprocesada
+        if not output:
+            processed = preprocess_image_for_qr(image)
+            results = try_multiple_rotations(processed)
+            for obj in results:
+                (x, y, w, h) = obj.rect
+                output.append({
+                    "type": obj.type,
+                    "data": obj.data.decode("utf-8"),
+                    "bounding_box": {
+                        "x1": int(x),
+                        "y1": int(y),
+                        "x2": int(x + w),
+                        "y2": int(y + h)
+                    }
+                })
+
+        return output
 
     except Exception as e:
         raise RuntimeError(f"Error al procesar imagen base64: {str(e)}")
