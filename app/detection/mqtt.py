@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from app.detection.services import detect_persons_mobilenet_from_base64  # o mobilenet si prefieres
+from app.detection.services import detect_persons_from_base64
 from paho.mqtt import client as mqtt_client
 import logging
 from paho.mqtt import client as mqtt_client
@@ -46,7 +46,7 @@ async def receive_mqtt_message(request: Request):
         return JSONResponse(status_code=400, content=error)
 
     try:
-        result = detect_persons_mobilenet_from_base64(payload["image_base64"])
+        result = detect_persons_from_base64(payload["image_base64"])
         response = {
             "status": "ok",
             "message": "Detección ejecutada",
