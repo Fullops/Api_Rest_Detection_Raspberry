@@ -8,7 +8,9 @@ import os
 from datetime import datetime
 from pyzbar.pyzbar import decode
 from PIL import Image
+from ultralytics import YOLO
 
+model = YOLO("model_ia/yolov8m.pt")
 net = cv2.dnn.readNetFromCaffe(
     "mobilenet_ssd/deploy.prototxt",
     "mobilenet_ssd/mobilenet_iter_73000.caffemodel"
@@ -352,3 +354,53 @@ def detect_persons_mobilenet_from_base64(image_base64: str) -> list:
 
     except Exception as e:
         raise RuntimeError(f"Error en detección con MobileNet SSD: {str(e)}")
+
+def detect_persons_from_base64(image_base64: str, confidence_threshold: float = 0.6) -> list:
+    try:
+        # Remover encabezado si viene con "data:image/..."
+        if image_base64.startswith("data:image"):
+            image_base64 = image_base64.split(",")[1]
+
+        # Decodificar base64
+        image_data = base64.b64decode(image_base64)
+
+        # Convertir a imagen OpenCV
+        image_array = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise ValueError("No se pudo decodificar la imagen")
+
+        # Ejecutar detección
+        results = model.predict(image)[0]
+        persons = []
+
+        for box in results.boxes:
+            cls_id = int(box.cls[0].item())
+            if cls_id == 0:  # Solo clase "person"
+                conf = float(box.conf[0].item())
+
+                # Validar confianza
+                if conf < confidence_threshold:
+                    continue
+
+                xyxy = box.xyxy[0].tolist()
+                x1, y1, x2, y2 = map(int, xyxy)
+
+                # Dibujar el bounding box sobre la imagen
+                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(image, f"Persona {conf:.2f}", (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+                persons.append({
+                    "confidence": round(conf, 3),
+                    "bounding_box": {
+                        "x1": x1, "y1": y1,
+                        "x2": x2, "y2": y2
+                    }
+                })
+
+        return persons
+
+    except Exception as e:
+        raise RuntimeError(f"Error al procesar la imagen Base64: {str(e)}")

@@ -7,6 +7,7 @@ from app.detection.services import read_code_from_base64
 from app.detection.services import detect_persons_haar_from_base64
 from app.detection.services import detect_faces_haar_from_base64
 from app.detection.services import detect_persons_mobilenet_from_base64
+from app.detection.services import detect_persons_from_base64
 
 router = APIRouter()
 
@@ -163,4 +164,23 @@ async def detect_persons_mobilenet(payload: ImageBase64Payload):
         raise HTTPException(
             status_code=500,
             detail=f"Error en MobileNet SSD: {str(e)}"
+        )
+    
+@router.post("/detect-yolo/")
+async def detect_from_base64(payload: ImageBase64Payload):
+    try:
+        result = detect_persons_from_base64(payload.image_base64)
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "message": "Personas detectadas exitosamente." if result else "No se detectaron personas.",
+                "result": result or []
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar imagen base64: {str(e)}"
         )
